@@ -142,6 +142,36 @@ void estimate_table_size(String_View content, size_t *out_rows, size_t *out_cols
         *out_cols = cols;
 }
 
+Table create_table(const char *file_path) {
+    size_t content_size = 0;
+    char *content = slurp_file(file_path, &content_size);
+    if (content == NULL) {
+        fprintf(stderr, "ERROR: could not read file %s: %s\n",
+                file_path, strerror(errno));
+        exit(1);
+    }
+
+    String_View input = {
+        .data = content,
+        .count = content_size
+    };
+
+    size_t rows, cols;
+    estimate_table_size(input, &rows, &cols);
+    Table table = table_alloc(rows, cols);
+    parse_table_from_content(&table, input);
+    return table;
+}
+
+void table_print(Table *table) {
+    for (size_t row = 0; row < table->rows; ++row) {
+        for (size_t col = 0; col < table->cols; ++col) {
+            printf(SV_Fmt"|", SV_Arg(table_cell_at(table, row, col)->as.text));
+        }
+        printf("\n");
+    }
+}
+
 Table table_get_column(Table *table, size_t col) {
     Table taken_col = table_alloc(table->rows, 1);
     for (size_t row = 0; row < table->rows; ++row) {
