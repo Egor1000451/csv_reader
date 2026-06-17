@@ -38,25 +38,18 @@ void usage(FILE *stream) {
     fprintf(stream, "Usage: ./csv_reader <input.csv>\n"); 
 }
 
-Table table_alloc(size_t rows, size_t cols, bool headers) {
+Table table_alloc(size_t rows, size_t cols) {
     Table table = {0};
     table.rows = rows;
     table.cols = cols;
     table.cells = malloc(sizeof(Cell) * rows * cols);
+    table.headers = malloc(sizeof(Cell) * cols);
     if (table.cells == NULL) {
         fprintf(stderr, "ERROR: cannot allocate memory for the table\n");
         exit(1);
     }
     memset(table.cells, 0, sizeof(Cell) * rows * cols);
-
-    if (headers) {
-        table.headers = malloc(sizeof(Cell) * cols);
-        memset(table.headers, 0, sizeof(Cell) * cols);
-    }
-    else {
-        table.headers = NULL;
-    }
-
+    memset(table.headers, 0, sizeof(Cell) * cols);
     return table;
 }
 
@@ -66,14 +59,13 @@ Cell *table_cell_at(Table *table, size_t row, size_t col) {
     return &table->cells[row * table->cols + col];
 }
 
+void set_headers (Table *table, size_t n) {
+	
+}
+
 Cell *table_header_at(Table *table, size_t col) {
     assert(col < table->cols);
-    if (table->headers)
-        return &table->headers[col];
-    else {
-        printf("Err: 'Headers' is false");
-        return NULL;
-    }
+    return &table->headers[col];
 }
 
 char *slurp_file(const char *file_path, size_t *size) {
@@ -115,10 +107,10 @@ error:
     return NULL;
 }
 
-void parse_table_from_content(Table *table, String_View content, bool header) {
+void parse_table_from_content(Table *table, String_View content) {
+    bool is_header = false;
     for (size_t row = 0; content.count > 0; ++row) {
-        bool is_header = false;
-        if (row == 0 && header) {
+        if (row == 0) {
             is_header = true;
         } else {
             is_header = false;
@@ -154,7 +146,7 @@ void estimate_table_size(String_View content, size_t *out_rows, size_t *out_cols
         *out_cols = cols;
 }
 
-Table create_table(const char *file_path, bool headers) {
+Table create_table(const char *file_path) {
     size_t content_size = 0;
     char *content = slurp_file(file_path, &content_size);
     if (content == NULL) {
@@ -170,8 +162,8 @@ Table create_table(const char *file_path, bool headers) {
 
     size_t rows, cols;
     estimate_table_size(input, &rows, &cols);
-    Table table = table_alloc(rows, cols, headers);
-    parse_table_from_content(&table, input, headers);
+    Table table = table_alloc(rows, cols);
+    parse_table_from_content(&table, input);
     return table;
 }
 
@@ -185,7 +177,7 @@ void table_print(Table *table) {
 }
 
 Table table_get_column(Table *table, size_t col) {
-    Table taken_col = table_alloc(table->rows, 1, true);
+    Table taken_col = table_alloc(table->rows, 1);
     for (size_t row = 0; row < table->rows; ++row) {
         taken_col.cells[row] = *table_cell_at(table, row, col);
     }
@@ -193,7 +185,7 @@ Table table_get_column(Table *table, size_t col) {
 }
 
 Table table_get_row(Table *table, size_t row) {
-    Table taken_row = table_alloc(1, table->cols, false);
+    Table taken_row = table_alloc(1, table->cols);
     for (size_t col = 0; col < table->cols; ++col) {
         taken_row.cells[col] = *table_cell_at(table, row, col);
     }
@@ -201,7 +193,6 @@ Table table_get_row(Table *table, size_t row) {
 }
 
 String_View* get_headers(Table *table) {
-    if (!table->headers) return NULL;
     String_View *headers = malloc(table->cols * sizeof(String_View));
     for (size_t col = 0; col < table->cols; ++col) {
         headers[col] = table_header_at(table, col)->as.text;
@@ -211,17 +202,12 @@ String_View* get_headers(Table *table) {
 
 void print_headers(Table *table) {
     String_View *headers = get_headers(table); 
-    if (!headers) {
-        printf("This table doesn't have headers\n");
-        return;
-    }
     for (size_t col = 0; col < table->cols; ++col) {
         printf("(%zu) "SV_Fmt"\n", col, SV_Arg(headers[col]));
     }
 }
 
 bool table_find_header_index(Table *table, String_View name, size_t *out_result) {
-    if (!table->headers) return false;
     for (size_t i = 0; i < table->cols; ++i) {
         if (table->headers[i].kind == CELL_KIND_TEXT) {
             if (sv_eq(table->headers[i].as.text, name)) {
@@ -236,6 +222,7 @@ bool table_find_header_index(Table *table, String_View name, size_t *out_result)
 bool table_get_column_by_name(Table *table, String_View name, Table *out_table) {
     size_t idx;
     bool found = table_find_header_index(table, name, &idx);
+    assert(found);
     if (found) {
         *out_table = table_get_column(table, idx);
         return true;
